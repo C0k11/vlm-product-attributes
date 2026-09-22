@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from vpa.metrics import fmt, score_both  # noqa: E402
-from vpa.prompting import ATTRIBUTES, build_instruction, json_schema, parse_output  # noqa: E402
+from vpa.prompting import ATTRIBUTES, build_prompt, json_schema, parse_output  # noqa: E402
 from vpa.splits import load_split  # noqa: E402
 
 
@@ -31,6 +31,7 @@ def main() -> None:
     ap.add_argument("--images", default="data/images/img768")
     ap.add_argument("--lora", default=None, help="LoRA adapter directory")
     ap.add_argument("--with-title", action="store_true")
+    ap.add_argument("--prompt", choices=["full", "short"], default="full")
     ap.add_argument("--out", default="outputs/eval")
     ap.add_argument("--passes", default="constrained")
     ap.add_argument("--gpu-mem", type=float, default=0.72)
@@ -78,7 +79,8 @@ def main() -> None:
     conversations = [
         [{"role": "user", "content": [
             {"type": "image_url", "image_url": {"url": f"file://{image_dir / (r['image_id'] + '.jpg')}"}},
-            {"type": "text", "text": build_instruction(product_types, titles.get(r["listing_key"]) if args.with_title else None)},
+            {"type": "text", "text": build_prompt(args.prompt, product_types,
+                                                  titles.get(r["listing_key"]) if args.with_title else None)},
         ]}]
         for r in rows
     ]
@@ -90,7 +92,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     report = {
         "name": args.name, "model": args.model, "lora": args.lora, "split": args.split, "n_rows": len(rows),
-        "images": str(image_dir), "with_title": args.with_title, "git_commit": sh(["git", "rev-parse", "--short", "HEAD"]),
+        "images": str(image_dir), "with_title": args.with_title, "prompt": args.prompt, "git_commit": sh(["git", "rev-parse", "--short", "HEAD"]),
         "vllm_config": {"gpu_memory_utilization": args.gpu_mem, "max_num_seqs": args.max_num_seqs,
                         "max_model_len": args.max_model_len},
         "chat_template_kwargs": chat_kwargs, "passes": {},

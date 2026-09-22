@@ -25,7 +25,7 @@ from transformers import (AutoModelForImageTextToText, AutoProcessor, BitsAndByt
                           TrainerCallback, TrainingArguments)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from vpa.prompting import ATTRIBUTES, build_instruction  # noqa: E402
+from vpa.prompting import ATTRIBUTES, build_prompt  # noqa: E402
 from vpa.splits import load_split  # noqa: E402
 
 LORA_TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj",
@@ -180,6 +180,8 @@ def main():
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--chat-kwargs", default='{"enable_thinking": false}')
+    ap.add_argument("--prompt", choices=["full", "short"], default="short")
+    ap.add_argument("--no-grad-ckpt", action="store_true")
     args = ap.parse_args()
 
     random.seed(args.seed)
@@ -201,7 +203,7 @@ def main():
 
     product_types = json.load(open("data/processed/manifest.json"))["product_types"]
     processor = AutoProcessor.from_pretrained(args.model)
-    ds = AttrDataset(uniq, args.images, processor, build_instruction(product_types), placeholders,
+    ds = AttrDataset(uniq, args.images, processor, build_prompt(args.prompt, product_types), placeholders,
                      json.loads(args.chat_kwargs))
 
     quant_cfg = None
@@ -227,7 +229,7 @@ def main():
         gradient_accumulation_steps=args.grad_accum, learning_rate=args.lr, num_train_epochs=args.epochs,
         max_steps=args.max_steps, lr_scheduler_type="cosine", warmup_steps=max(1, int(0.03 * steps_per_epoch)),
         bf16=True, logging_steps=20, save_strategy="no", report_to=[], seed=args.seed,
-        gradient_checkpointing=True, gradient_checkpointing_kwargs={"use_reentrant": False},
+        gradient_checkpointing=not args.no_grad_ckpt, gradient_checkpointing_kwargs={"use_reentrant": False},
         dataloader_num_workers=args.workers, remove_unused_columns=False, optim="adamw_torch",
     )
     trainer = AnswerLossTrainer(model=model, args=targs, train_dataset=ds,
@@ -243,6 +245,7 @@ def main():
         "base_model": args.model, "quant": args.quant, "lora": {"r": args.rank, "alpha": args.alpha,
         "dropout": args.dropout, "targets": LORA_TARGETS}, "lr": args.lr, "epochs": args.epochs,
         "batch_size": args.batch_size, "grad_accum": args.grad_accum, "train_examples": len(ds),
+        "prompt": args.prompt, "gradient_checkpointing": not args.no_grad_ckpt, "images": args.images,
         "steps": result.global_step, "train_loss": result.training_loss, "train_seconds": round(train_s),
         "examples_per_s": round(len(ds) * args.epochs / train_s, 2) if args.max_steps < 0 else None,
         "max_memory_allocated_gib": round(torch.cuda.max_memory_allocated() / 2**30, 2),

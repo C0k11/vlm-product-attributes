@@ -21,6 +21,20 @@ def build_instruction(product_types: list[str], title: str | None = None) -> str
     return "\n".join(lines)
 
 
+SHORT_INSTRUCTION = "Return the product_type, color and material of this product as a JSON object."
+
+
+def build_prompt(style: str, product_types: list[str], title: str | None = None) -> str:
+    """full: label lists spelled out (needed zero-shot). short: for fine-tuned
+    models that have learned the label space; valid values are still enforced by
+    the JSON schema at decode time."""
+    if style == "full":
+        return build_instruction(product_types, title)
+    if style == "short":
+        return SHORT_INSTRUCTION if not title else f"Product title: {title}\n{SHORT_INSTRUCTION}"
+    raise ValueError(style)
+
+
 def json_schema(product_types: list[str]) -> dict:
     return {
         "type": "object",
