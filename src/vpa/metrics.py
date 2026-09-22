@@ -5,7 +5,12 @@ from .prompting import ATTRIBUTES
 
 
 def _macro_f1(pairs: list[tuple[str, str | None]]) -> float:
-    labels = {g for g, _ in pairs}
+    """Macro-F1 over the union of gold and predicted classes (sklearn's default).
+
+    A missing prediction (None) counts against recall of the gold class but is
+    not a class of its own.
+    """
+    labels = {g for g, _ in pairs} | {p for _, p in pairs if p is not None}
     tp, fp, fn = Counter(), Counter(), Counter()
     for gold, pred in pairs:
         if pred == gold:
@@ -48,7 +53,7 @@ def score(rows: list[dict], preds: list[dict | None]) -> dict:
     """rows carry gold labels (None = unlabeled); preds are parsed outputs or None.
 
     An unparseable output counts as wrong for every labeled attribute of that row.
-    Macro-F1 averages over gold classes present in the evaluated rows.
+    Macro-F1 averages over gold and predicted classes in the evaluated rows.
     """
     assert len(rows) == len(preds)
     out = {}
@@ -69,3 +74,9 @@ def score(rows: list[dict], preds: list[dict | None]) -> dict:
             "macro_f1": _macro_f1(pairs) if n else None,
         }
     return out
+
+
+def fmt(m: dict) -> str:
+    if not m["n"]:
+        return "n=0"
+    return f"{m['correct']}/{m['n']} acc={m['accuracy']:.4f} macro_f1={m['macro_f1']:.4f}"

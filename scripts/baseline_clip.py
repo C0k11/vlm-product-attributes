@@ -17,13 +17,14 @@ from pathlib import Path
 import numpy as np
 import torch
 from PIL import Image
+from joblib import Parallel, delayed
 from sklearn.linear_model import LogisticRegression
 from torch.utils.data import DataLoader, Dataset
 from transformers import CLIPModel, CLIPProcessor
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from vpa.labels import COLORS, MATERIALS  # noqa: E402
-from vpa.metrics import score, score_both  # noqa: E402
+from vpa.metrics import fmt, score, score_both  # noqa: E402
 from vpa.prompting import ATTRIBUTES  # noqa: E402
 from vpa.splits import load_split  # noqa: E402
 
@@ -135,12 +136,14 @@ def main() -> None:
     for attr in ATTRIBUTES:
         idx = [i for i, r in enumerate(splits["train"]) if r[attr]]
         y = [splits["train"][i][attr] for i in idx]
+        cs = [float(x) for x in args.cs.split(",")]
+        fitted = Parallel(n_jobs=len(cs))(
+            delayed(LogisticRegression(C=c, max_iter=3000).fit)(emb["train"][idx], y) for c in cs)
         best = None
-        for c in [float(x) for x in args.cs.split(",")]:
-            clf = LogisticRegression(C=c, max_iter=3000).fit(emb["train"][idx], y)
+        for c, clf in zip(cs, fitted):
             vp = [{attr: p} for p in clf.predict(emb["val"])]
             f1 = score(splits["val"], vp)[attr]["macro_f1"]
-            print(f"  probe {attr}: C={c} train n={len(idx)} val macro_f1={f1:.4f}")
+            print(f"  probe {attr}: C={c} train n={len(idx)} val macro_f1={f1:.4f}", flush=True)
             if best is None or f1 > best[0]:
                 best = (f1, c, clf)
         chosen[attr] = {"C": best[1], "val_macro_f1": best[0], "train_n": len(idx)}
@@ -158,8 +161,8 @@ def main() -> None:
                     fh.write(json.dumps({"listing_key": r["listing_key"], **p}) + "\n")
             for view, scores in report[name][s].items():
                 for attr, m in scores.items():
-                    print(f"[clip {name}] {s} [{view}] {attr}: {m['correct']}/{m['n']} "
-                          f"acc={m['accuracy']:.4f} macro_f1={m['macro_f1']:.4f}")
+                    print(f"[clip {name}] {s} [{view}] {attr}: "
+                          f"{fmt(m)}")
     (out / "report.json").write_text(json.dumps(report, indent=2))
 
 

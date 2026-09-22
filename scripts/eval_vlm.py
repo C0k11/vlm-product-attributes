@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from vpa.metrics import score_both  # noqa: E402
+from vpa.metrics import fmt, score_both  # noqa: E402
 from vpa.prompting import ATTRIBUTES, build_instruction, json_schema, parse_output  # noqa: E402
 from vpa.splits import load_split  # noqa: E402
 
@@ -128,7 +128,7 @@ def main() -> None:
               f"fenced={summary['json_fenced']} invalid={summary['json_invalid']} img/s={summary['images_per_s']}")
         for view, scores in summary["scores"].items():
             for attr, m in scores.items():
-                print(f"    [{view}] {attr}: {m['correct']}/{m['n']} acc={m['accuracy']:.4f} macro_f1={m['macro_f1']:.4f}")
+                print(f"    [{view}] {attr}: {fmt(m)}")
     (out_dir / "report.json").write_text(json.dumps(report, indent=2))
 
 

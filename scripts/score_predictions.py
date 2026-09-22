@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from vpa.metrics import score_both  # noqa: E402
+from vpa.metrics import fmt, score_both  # noqa: E402
 from vpa.splits import load_split  # noqa: E402
 
 
@@ -32,7 +32,7 @@ def main() -> None:
     res = score_both(rows, preds)
     for view, scores in res.items():
         for attr, m in scores.items():
-            print(f"  [{view}] {attr}: {m['correct']}/{m['n']} acc={m['accuracy']:.4f} macro_f1={m['macro_f1']:.4f}")
+            print(f"  [{view}] {attr}: {fmt(m)}")
     if args.out:
         Path(args.out).write_text(json.dumps({"split": args.split, "predictions": args.predictions,
                                               "rows_without_prediction": missing, **res}, indent=2))

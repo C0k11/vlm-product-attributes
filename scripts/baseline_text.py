@@ -11,12 +11,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+from joblib import Parallel, delayed
 from scipy.sparse import hstack
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from vpa.metrics import score  # noqa: E402
+from vpa.metrics import fmt, score, score_both  # noqa: E402
 from vpa.prompting import ATTRIBUTES  # noqa: E402
 from vpa.splits import load_split  # noqa: E402
 from vpa.titles import load_titles  # noqa: E402
@@ -57,13 +58,14 @@ def main() -> None:
         idx = [i for i, r in enumerate(splits["train"]) if r[attr] and text["train"][i]]
         y = [splits["train"][i][attr] for i in idx]
         majority = collections.Counter(r[attr] for r in splits["train"] if r[attr]).most_common(1)[0][0]
+        cs = [float(x) for x in args.cs.split(",")]
+        fitted = Parallel(n_jobs=len(cs))(
+            delayed(LogisticRegression(C=c, max_iter=3000).fit)(X["train"][idx], y) for c in cs)
         best = None
-        for c in [float(x) for x in args.cs.split(",")]:
-            clf = LogisticRegression(C=c, max_iter=3000)
-            clf.fit(X["train"][idx], y)
+        for c, clf in zip(cs, fitted):
             val_p = [{attr: p if text["val"][i] else majority} for i, p in enumerate(clf.predict(X["val"]))]
             f1 = score(splits["val"], val_p)[attr]["macro_f1"]
-            print(f"  {attr}: C={c} train n={len(idx)} val macro_f1={f1:.4f}")
+            print(f"  {attr}: C={c} train n={len(idx)} val macro_f1={f1:.4f}", flush=True)
             if best is None or f1 > best[0]:
                 best = (f1, c, clf)
         chosen[attr] = {"C": best[1], "val_macro_f1": best[0], "train_n": len(idx), "majority": majority}
@@ -76,13 +78,14 @@ def main() -> None:
     report = {"method": "tfidf word(1-2)+char_wb(2-5) + logistic regression, title only",
               "git_commit": git_commit(), "chosen": chosen, "results": {}}
     for s in ["val", "test"]:
-        res = score(splits[s], preds[s])
-        report["results"][s] = res
+        both = score_both(splits[s], preds[s])
+        report["results"][s] = both
+        res = both["rows"]
         with open(out / f"{s}_predictions.jsonl", "w", encoding="utf-8") as fh:
             for r, p in zip(splits[s], preds[s]):
                 fh.write(json.dumps({"listing_key": r["listing_key"], **p}) + "\n")
         for attr, m in res.items():
-            print(f"[text baseline] {s} {attr}: {m['correct']}/{m['n']} acc={m['accuracy']:.4f} macro_f1={m['macro_f1']:.4f}")
+            print(f"[text baseline] {s} [rows] {attr}: {fmt(m)}")
     (out / "report.json").write_text(json.dumps(report, indent=2))
 
 
