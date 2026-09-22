@@ -65,6 +65,7 @@ def main() -> None:
     ap.add_argument("--gpu-mem", type=float, default=0.72,
                     help="fraction of total GPU memory for vLLM; Windows apps hold part of the card")
     ap.add_argument("--max-num-seqs", type=int, default=128)
+    ap.add_argument("--max-num-batched-tokens", type=int, default=None)
     ap.add_argument("--enforce-eager", action="store_true")
     ap.add_argument("--quantization", default=None)
     ap.add_argument("--max-model-len", type=int, default=4096)
@@ -98,6 +99,7 @@ def main() -> None:
         mm_processor_cache_gb=0,
         safetensors_load_strategy=args.load_strategy,
         max_num_seqs=args.max_num_seqs,
+        max_num_batched_tokens=args.max_num_batched_tokens,
         enforce_eager=args.enforce_eager,
         quantization=args.quantization,
         seed=0,
@@ -128,6 +130,7 @@ def main() -> None:
         "n_rows": len(rows),
         "gpu_memory_utilization": args.gpu_mem,
         "max_num_seqs": args.max_num_seqs,
+        "max_num_batched_tokens": args.max_num_batched_tokens,
         "enforce_eager": args.enforce_eager,
         "quantization": args.quantization,
         "gpu_used_by_others_mib": baseline_mib,
