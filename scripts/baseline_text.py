@@ -42,7 +42,7 @@ def main() -> None:
 
     word = TfidfVectorizer(lowercase=True, ngram_range=(1, 2), min_df=2, sublinear_tf=True)
     char = TfidfVectorizer(lowercase=True, analyzer="char_wb", ngram_range=(2, 5), min_df=3,
-                           sublinear_tf=True, max_features=300_000)
+                           sublinear_tf=True, max_features=200_000)
     train_text = [t or "" for t in text["train"]]
     word.fit(train_text)
     char.fit(train_text)
@@ -59,7 +59,7 @@ def main() -> None:
         y = [splits["train"][i][attr] for i in idx]
         majority = collections.Counter(r[attr] for r in splits["train"] if r[attr]).most_common(1)[0][0]
         cs = [float(x) for x in args.cs.split(",")]
-        fitted = Parallel(n_jobs=len(cs))(
+        fitted = Parallel(n_jobs=min(2, len(cs)))(
             delayed(LogisticRegression(C=c, max_iter=3000).fit)(X["train"][idx], y) for c in cs)
         best = None
         for c, clf in zip(cs, fitted):
