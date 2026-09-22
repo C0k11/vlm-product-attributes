@@ -65,7 +65,7 @@ Florence-2 is a sequence-to-sequence model (DaViT encoder plus BART-style decode
 - vLLM runs on Linux, so batch inference and the pilot run in WSL2 (Ubuntu distro stored at `D:\wsl\Ubuntu`). Plain transformers inference also works on Windows.
 - Windows Python env currently has transformers 4.55.4, too old for Qwen3.5 (5.2+) and MiniCPM-V 4.6 (5.7+); a separate env is needed either way.
 
-## 3. Pilot plan (pending approval)
+## 3. Pilot plan
 
 Candidates: Qwen3.5-4B, Gemma-4-E4B-it, Qwen3-VL-8B-Instruct.
 
@@ -76,3 +76,26 @@ Candidates: Qwen3.5-4B, Gemma-4-E4B-it, Qwen3-VL-8B-Instruct.
   - throughput (images/s, vLLM offline batch, fixed image size) and GPU memory
 - Image input: originals resized to a fixed longest side; the 256 px small version is run once for the best model to see how much resolution matters.
 - Downloads: listing shards 87 MB, images.csv.gz 6.4 MB, 200 original images (about 76 MB at the sampled mean), model weights 9.34 + 16.02 + 17.55 = 42.9 GB, plus the vLLM environment in WSL.
+
+## 4. Pilot results (2026-09-22)
+
+Setup: 200 val rows (`data/pilot/pilot.jsonl`, stratified over 34 product types, one row per group; material labeled on 84). Image only, no title, original resized to 768 px long side. Zero-shot, greedy decoding, same prompt for every model (37 product types, 16 colors, 9 materials listed in the prompt). All three models in bf16 through the same transformers script (`scripts/run_pilot_hf.py`, batch 4, transformers 5.17.0), commit 39d34d8.
+
+| Model (revision) | JSON valid, no constraint | product_type | color | material | Weights on GPU | Peak allocated |
+|---|---|---|---|---|---|---|
+| Qwen3.5-4B (851bf6e) | 200/200 | 145/200 (0.725) | 112/200 (0.560) | 66/84 (0.786) | 8.46 GiB | 9.75 GiB |
+| Gemma-4-E4B-it (ee0ef60) | 200/200 | 139/200 (0.695) | 113/200 (0.565) | 57/84 (0.679) | 14.79 GiB | 15.30 GiB |
+| Qwen3-VL-8B-Instruct (0c351dd) | 200/200 | 138/200 (0.690) | 114/200 (0.570) | 63/84 (0.750) | 16.33 GiB | 17.39 GiB |
+
+Paired exact McNemar tests, Qwen3.5-4B against each other model: product_type p = 0.286 (Gemma) and 0.248 (Qwen3-VL); color p = 1.000 and 0.774; material p = 0.012 (Gemma, 10 vs 1 discordant) and 0.453. With six comparisons, none passes a Bonferroni threshold of 0.0083. On this sample the three models are not separable on accuracy.
+
+Cross-check: Qwen3.5-4B under vLLM 0.30.0 on the same rows gave 144/200, 111/200, 66/84 with JSON-schema constrained decoding and 143/200, 111/200, 65/84 without, all 200 outputs valid JSON. Mean prompt length was 823 tokens under both frameworks.
+
+Serving under vLLM on this machine (RTX 4090, 23,028 MiB, with about 4.3 to 4.6 GB held by other Windows applications):
+- Qwen3.5-4B: runs with gpu_memory_utilization 0.72, CUDA graphs on, 5.34 images/s with schema-constrained output (200 images, 823 prompt tokens and 32 output tokens on average).
+- Gemma-4-E4B-it: does not start. Non-KV memory about 17.8 GiB leaves no room for KV cache inside the roughly 18 GiB that is free.
+- Qwen3-VL-8B-Instruct: not attempted under vLLM; its weights alone are 16.33 GiB.
+
+Transformers throughput (batch 4, not comparable to vLLM): 1.60, 1.06 and 0.54 images/s. Qwen3.5-4B ran with the reference PyTorch implementation of its linear-attention layers because `flash-linear-attention` and `causal_conv1d` are not installed.
+
+Error pattern for Qwen3.5-4B (vLLM, constrained): color mistakes are neighbouring shades (black to grey 6, white to silver 6, beige to brown 4); product_type mistakes follow the catalog taxonomy (FINENECKLACEBRACELETANKLET to NECKLACE 4, HOME to FLAT_SHEET or HOME_BED_AND_BATH 6). Both are the kind of convention fine-tuning can learn.
