@@ -36,10 +36,10 @@ class GpuSampler(threading.Thread):
 
     def __init__(self, interval: float = 0.5):
         super().__init__(daemon=True)
-        self.interval, self.peak, self._stop = interval, 0, threading.Event()
+        self.interval, self.peak, self._halt = interval, 0, threading.Event()
 
     def run(self) -> None:
-        while not self._stop.is_set():
+        while not self._halt.is_set():
             out = subprocess.run(
                 ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
                 capture_output=True, text=True,
@@ -49,7 +49,7 @@ class GpuSampler(threading.Thread):
             time.sleep(self.interval)
 
     def stop(self) -> int:
-        self._stop.set()
+        self._halt.set()
         self.join()
         return self.peak
 
@@ -62,12 +62,19 @@ def main() -> None:
     ap.add_argument("--images", default="data/pilot/img768")
     ap.add_argument("--manifest", default="data/processed/manifest.json")
     ap.add_argument("--out", default="outputs/pilot")
-    ap.add_argument("--gpu-mem", type=float, default=0.85)
+    ap.add_argument("--gpu-mem", type=float, default=0.72,
+                    help="fraction of total GPU memory for vLLM; Windows apps hold part of the card")
+    ap.add_argument("--max-num-seqs", type=int, default=128)
+    ap.add_argument("--enforce-eager", action="store_true")
+    ap.add_argument("--quantization", default=None)
     ap.add_argument("--max-model-len", type=int, default=4096)
     ap.add_argument("--max-tokens", type=int, default=256)
     ap.add_argument("--passes", default="free,constrained")
     ap.add_argument("--chat-kwargs", default="{}", help="JSON dict passed as chat_template_kwargs")
     ap.add_argument("--mm-limits", default='{"image": 1}')
+    ap.add_argument("--load-strategy", default="eager",
+                    help="safetensors load strategy; eager reads each shard sequentially, "
+                         "much faster than mmap when weights sit on a Windows drive under WSL")
     args = ap.parse_args()
 
     from vllm import LLM, SamplingParams
@@ -77,6 +84,10 @@ def main() -> None:
     product_types = json.load(open(args.manifest))["product_types"]
     image_dir = Path(args.images).resolve()
     print(f"rows: {len(rows)}; product types in prompt: {len(product_types)}; images: {image_dir}")
+    baseline_mib = int(subprocess.run(
+        ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+        capture_output=True, text=True).stdout.split()[0])
+    print(f"GPU memory in use before loading (other processes): {baseline_mib} MiB")
 
     llm = LLM(
         model=args.model,
@@ -85,6 +96,10 @@ def main() -> None:
         limit_mm_per_prompt=json.loads(args.mm_limits),
         allowed_local_media_path=str(image_dir.parent.parent),
         mm_processor_cache_gb=0,
+        safetensors_load_strategy=args.load_strategy,
+        max_num_seqs=args.max_num_seqs,
+        enforce_eager=args.enforce_eager,
+        quantization=args.quantization,
         seed=0,
     )
 
@@ -112,6 +127,10 @@ def main() -> None:
         "images": str(image_dir),
         "n_rows": len(rows),
         "gpu_memory_utilization": args.gpu_mem,
+        "max_num_seqs": args.max_num_seqs,
+        "enforce_eager": args.enforce_eager,
+        "quantization": args.quantization,
+        "gpu_used_by_others_mib": baseline_mib,
         "chat_template_kwargs": chat_kwargs,
         "passes": {},
     }
