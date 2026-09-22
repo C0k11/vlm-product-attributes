@@ -228,7 +228,8 @@ def main():
         output_dir=args.out, per_device_train_batch_size=args.batch_size,
         gradient_accumulation_steps=args.grad_accum, learning_rate=args.lr, num_train_epochs=args.epochs,
         max_steps=args.max_steps, lr_scheduler_type="cosine", warmup_steps=max(1, int(0.03 * steps_per_epoch)),
-        bf16=True, logging_steps=20, save_strategy="no", report_to=[], seed=args.seed,
+        bf16=True, logging_steps=20, save_strategy="steps", save_steps=500, save_total_limit=2,
+        report_to=[], seed=args.seed,
         gradient_checkpointing=not args.no_grad_ckpt, gradient_checkpointing_kwargs={"use_reentrant": False},
         dataloader_num_workers=args.workers, remove_unused_columns=False, optim="adamw_torch",
     )
