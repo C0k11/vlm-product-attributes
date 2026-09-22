@@ -32,6 +32,7 @@ def main() -> None:
     ap.add_argument("--out", default="outputs/baselines/text_tfidf_lr")
     ap.add_argument("--cs", default="0.3,1,3,10,30")
     args = ap.parse_args()
+    commit = git_commit()
 
     titles = load_titles()
     splits = {s: load_split(s) for s in ["train", "val", "test"]}
@@ -76,7 +77,7 @@ def main() -> None:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     report = {"method": "tfidf word(1-2)+char_wb(2-5) + logistic regression, title only",
-              "git_commit": git_commit(), "chosen": chosen, "results": {}}
+              "git_commit": commit, "chosen": chosen, "results": {}}
     for s in ["val", "test"]:
         both = score_both(splits[s], preds[s])
         report["results"][s] = both
