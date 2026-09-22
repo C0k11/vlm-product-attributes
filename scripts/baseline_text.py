@@ -59,7 +59,7 @@ def main() -> None:
         y = [splits["train"][i][attr] for i in idx]
         majority = collections.Counter(r[attr] for r in splits["train"] if r[attr]).most_common(1)[0][0]
         cs = [float(x) for x in args.cs.split(",")]
-        fitted = Parallel(n_jobs=min(2, len(cs)))(
+        fitted = Parallel(n_jobs=min(3, len(cs)), prefer="threads")(
             delayed(LogisticRegression(C=c, max_iter=3000).fit)(X["train"][idx], y) for c in cs)
         best = None
         for c, clf in zip(cs, fitted):

@@ -138,7 +138,7 @@ def main() -> None:
         idx = [i for i, r in enumerate(splits["train"]) if r[attr]]
         y = [splits["train"][i][attr] for i in idx]
         cs = [float(x) for x in args.cs.split(",")]
-        fitted = Parallel(n_jobs=len(cs))(
+        fitted = Parallel(n_jobs=len(cs), prefer="threads")(
             delayed(LogisticRegression(C=c, max_iter=3000).fit)(emb["train"][idx], y) for c in cs)
         best = None
         for c, clf in zip(cs, fitted):
