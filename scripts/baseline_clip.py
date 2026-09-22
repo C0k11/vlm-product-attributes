@@ -83,11 +83,12 @@ def embed_images(model, processor, rows, image_dir, cache: Path) -> np.ndarray:
 
 @torch.inference_mode()
 def class_text_embeddings(model, processor, attr, classes) -> np.ndarray:
-    names = {
-        "product_type": [TYPE_NAMES[c] for c in classes],
-        "color": [COLOR_WORDS.get(c, c) for c in classes],
-        "material": classes,
-    }[attr]
+    if attr == "product_type":
+        names = [TYPE_NAMES[c] for c in classes]
+    elif attr == "color":
+        names = [COLOR_WORDS.get(c, c) for c in classes]
+    else:
+        names = list(classes)
     embs = []
     for name in names:
         prompts = [t.format(name) for t in TEMPLATES[attr]]
