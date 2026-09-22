@@ -22,6 +22,28 @@ def _macro_f1(pairs: list[tuple[str, str | None]]) -> float:
     return sum(f1s) / len(f1s) if f1s else 0.0
 
 
+def unique_image_mask(rows: list[dict]) -> list[bool]:
+    """True for the first row of each image_id in listing_key order.
+
+    Variants of one product (sizes, marketplaces) often share a main image, so
+    the row-level score weights popular products several times. Scoring only
+    the masked rows counts each image once.
+    """
+    first = {}
+    for i, r in sorted(enumerate(rows), key=lambda x: x[1]["listing_key"]):
+        first.setdefault(r["image_id"], i)
+    keep = set(first.values())
+    return [i in keep for i in range(len(rows))]
+
+
+def score_both(rows: list[dict], preds: list[dict | None]) -> dict:
+    mask = unique_image_mask(rows)
+    return {
+        "rows": score(rows, preds),
+        "unique_images": score([r for r, m in zip(rows, mask) if m], [p for p, m in zip(preds, mask) if m]),
+    }
+
+
 def score(rows: list[dict], preds: list[dict | None]) -> dict:
     """rows carry gold labels (None = unlabeled); preds are parsed outputs or None.
 
