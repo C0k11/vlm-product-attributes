@@ -93,6 +93,8 @@ class AttrDataset(Dataset):
 
 
 def collate(batch, pad_id):
+    """Left padding, so every answer ends at the last position and the loss can
+    be computed from the last few logits only."""
     n = max(len(b["input_ids"]) for b in batch)
     out = {
         "input_ids": torch.full((len(batch), n), pad_id, dtype=torch.long),
@@ -101,20 +103,49 @@ def collate(batch, pad_id):
     }
     for i, b in enumerate(batch):
         L = len(b["input_ids"])
-        out["input_ids"][i, :L] = b["input_ids"]
-        out["labels"][i, :L] = b["labels"]
-        out["attention_mask"][i, :L] = 1
+        out["input_ids"][i, n - L:] = b["input_ids"]
+        out["labels"][i, n - L:] = b["labels"]
+        out["attention_mask"][i, n - L:] = 1
     seq_keys = [k for k in batch[0] if k not in out and batch[0][k].dim() == 1
                 and len(batch[0][k]) == len(batch[0]["input_ids"])]
     for k in seq_keys:
         t = torch.zeros((len(batch), n), dtype=batch[0][k].dtype)
         for i, b in enumerate(batch):
-            t[i, :len(b[k])] = b[k]
+            t[i, n - len(b[k]):] = b[k]
         out[k] = t
     for k in batch[0]:
         if k not in out:
             out[k] = torch.cat([b[k] for b in batch], dim=0)
     return out
+
+
+class AnswerLossTrainer(Trainer):
+    """Cross-entropy on the answer span only.
+
+    The vocabulary has about 248k entries, so full-sequence logits for a batch of
+    8 x ~470 tokens cost several GB. With left padding the answers sit at the end,
+    so only the last k positions are projected through lm_head.
+    """
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        # the loss below is normalized by num_items_in_batch over the whole
+        # accumulated batch, so the Trainer must not divide it again
+        self.model_accepts_loss_kwargs = True
+
+    def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+        labels = inputs.pop("labels")
+        has_label = labels != -100
+        first = torch.where(has_label.any(1), has_label.float().argmax(1), labels.shape[1]).min().item()
+        k = labels.shape[1] - int(first) + 1
+        outputs = model(**inputs, logits_to_keep=k, use_cache=False)
+        logits = outputs.logits[:, :-1, :].float()
+        target = labels[:, -(k - 1):]
+        loss = torch.nn.functional.cross_entropy(logits.reshape(-1, logits.shape[-1]), target.reshape(-1),
+                                                 ignore_index=-100, reduction="sum")
+        denom = num_items_in_batch if num_items_in_batch is not None else (target != -100).sum()
+        loss = loss / denom
+        return (loss, outputs) if return_outputs else loss
 
 
 class ThroughputLog(TrainerCallback):
@@ -199,7 +230,7 @@ def main():
         gradient_checkpointing=True, gradient_checkpointing_kwargs={"use_reentrant": False},
         dataloader_num_workers=args.workers, remove_unused_columns=False, optim="adamw_torch",
     )
-    trainer = Trainer(model=model, args=targs, train_dataset=ds,
+    trainer = AnswerLossTrainer(model=model, args=targs, train_dataset=ds,
                       data_collator=lambda b: collate(b, processor.tokenizer.pad_token_id),
                       callbacks=[ThroughputLog()])
     t0 = time.perf_counter()
