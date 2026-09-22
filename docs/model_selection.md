@@ -1,6 +1,6 @@
 # Step 0: dataset check and model survey
 
-Date: 2026-09-22. Facts below come from official pages (links inline); nothing here is a measured model result yet. Items marked "measured" were counted by a script on the listed files.
+Date: 2026-09-22. Sections 1 and 2 come from official pages (links inline); items marked "measured" were counted by a script on the listed files. Section 4 holds the measured pilot results.
 
 ## 1. Dataset: Amazon Berkeley Objects (ABO)
 
@@ -69,7 +69,7 @@ Florence-2 is a sequence-to-sequence model (DaViT encoder plus BART-style decode
 
 Candidates: Qwen3.5-4B, Gemma-4-E4B-it, Qwen3-VL-8B-Instruct.
 
-- Sample: 200 listings, main image only, from a pool that excludes `CELLULAR_PHONE_CASE`, requires en color and en material, and has a product_type in the top-K types. Stratified by product type. Labels normalized to closed sets (product_type list, about 12 base colors plus multi, top materials plus other).
+- Sample: 200 listings, main image only, drawn from the val split only (so test stays untouched), requiring a color label; material is scored where present. Stratified by product type, one row per group. Labels normalized to closed sets (37 product types, 16 colors, 9 materials; see `src/vpa/labels.py`).
 - Per model, same prompt with the candidate label lists:
   - per-attribute accuracy, with denominators printed
   - raw JSON validity (unconstrained) and validity under vLLM JSON-schema decoding
