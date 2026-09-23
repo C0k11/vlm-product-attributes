@@ -65,6 +65,8 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--quantization", default=None, help="e.g. fp8 (online weight quantization)")
     ap.add_argument("--enforce-eager", action="store_true")
+    ap.add_argument("--chunk", type=int, default=512,
+                    help="requests submitted per llm.chat call; bounds the preprocessed image tensors held in RAM")
     args = ap.parse_args()
     commit = sh(["git", "rev-parse", "--short", "HEAD"])
     gpu_before = sh(["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"])
@@ -121,7 +123,7 @@ def main() -> None:
         "images": str(image_dir), "with_title": args.with_title, "prompt": args.prompt, "git_commit": commit, "quantization": args.quantization,
         "gpu_used_by_others_mib": gpu_before,
         "vllm_config": {"gpu_memory_utilization": args.gpu_mem, "max_num_seqs": args.max_num_seqs,
-                        "max_model_len": args.max_model_len},
+                        "max_model_len": args.max_model_len, "chunk": args.chunk},
         "chat_template_kwargs": chat_kwargs, "passes": {},
     }
     for name in args.passes.split(","):
@@ -132,8 +134,10 @@ def main() -> None:
         sampler = GpuSampler()
         sampler.start()
         t0 = time.perf_counter()
-        results = llm.chat(conversations, params, chat_template_kwargs=chat_kwargs, use_tqdm=False,
-                           lora_request=lora_req)
+        results = []
+        for start in range(0, len(conversations), args.chunk):
+            results += llm.chat(conversations[start:start + args.chunk], params, chat_template_kwargs=chat_kwargs,
+                                use_tqdm=False, lora_request=lora_req)
         elapsed = time.perf_counter() - t0
         peak_mib = sampler.stop()
         preds, statuses = [], []
