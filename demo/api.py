@@ -6,7 +6,7 @@ labels from the closed sets. Run inside WSL:
 
     BASE_MODEL=~/models/Qwen__Qwen3.5-4B \
     LORA_IMAGE=outputs/train/lora_r16_short/final \
-    LORA_TITLE=outputs/train/lora_title/final \
+    LORA_TITLE=outputs/train/lora_r16_short_title/final \
     uvicorn demo.api:app --host 0.0.0.0 --port 8000
 
 LORA_TITLE is optional; without it, requests that include a title are answered
