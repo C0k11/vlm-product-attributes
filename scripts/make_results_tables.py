@@ -31,8 +31,8 @@ BENCH = [
     ("lora_adapter_256", "LoRA adapter served by vLLM, short prompt, 256 px"),
     ("lora_merged_256", "LoRA merged into bf16 weights, short prompt, 256 px"),
     ("lora_merged_256_fp8", "merged, FP8 weight quantization, short prompt, 256 px"),
-    ("lora_merged_256_seq1", "merged, one request at a time (max_num_seqs=1, 300 images)"),
 ]
+LATENCY_RUN = ("lora_merged_256_seq1", "merged bf16, short prompt, 256 px, one request at a time (max_num_seqs=1)")
 
 
 def load_preds(path):
@@ -67,8 +67,8 @@ def main():
 
     lines += ["", "## Inference trade-offs (val, 5,713 rows, one RTX 4090, vLLM 0.30.0)", "",
               "Accuracy per row on val. Weights memory is vLLM's reported model load size. "
-              "Throughput is images per second over the whole split with up to 128 concurrent requests, "
-              "except the last row, which sends one request at a time.", "",
+              "Throughput is images per second over the whole split, with up to 128 concurrent requests, "
+              "submitted in chunks of 512.", "",
               "| Setting | Prompt tokens | Weights memory | Images/s | product_type | color | material |",
               "|---|---|---|---|---|---|---|"]
     for key, label in BENCH:
@@ -88,6 +88,13 @@ def main():
         extra = f" (n={d['n_rows']})" if d["n_rows"] != 5713 else ""
         lines.append(f"| {label}{extra} | {ps['mean_prompt_tokens']:.0f} | {mem} | {ps['images_per_s']:.1f} | "
                      f"{s['product_type']['accuracy']:.3f} | {s['color']['accuracy']:.3f} | {s['material']['accuracy']:.3f} |")
+    key, label = LATENCY_RUN
+    rep = Path("outputs/bench") / key / "report.json"
+    if rep.exists():
+        d = json.load(open(rep))
+        ps = d["passes"]["constrained"]
+        lines += ["", f"Single-request latency, {label}: {1000 * ps['seconds'] / d['n_rows']:.0f} ms per image on average "
+                      f"over the first {d['n_rows']} val images, including image preprocessing."]
     Path(args.out).write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
 
