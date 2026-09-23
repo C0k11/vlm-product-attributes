@@ -40,6 +40,8 @@ def sh(cmd):
 
 
 class AttrDataset(Dataset):
+    """instruction is a string, or a callable row -> string (e.g. to include the title)."""
+
     def __init__(self, rows, image_dir, processor, instruction, placeholders, chat_kwargs):
         self.rows, self.image_dir, self.processor = rows, Path(image_dir), processor
         self.instruction, self.placeholders, self.chat_kwargs = instruction, placeholders, chat_kwargs
@@ -71,7 +73,8 @@ class AttrDataset(Dataset):
     def __getitem__(self, i):
         row = self.rows[i]
         img = Image.open(self.image_dir / f"{row['image_id']}.jpg").convert("RGB")
-        messages = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": self.instruction}]}]
+        text = self.instruction(row) if callable(self.instruction) else self.instruction
+        messages = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": text}]}]
         prompt = self.processor.apply_chat_template(messages, add_generation_prompt=True, tokenize=False,
                                                     **self.chat_kwargs)
         enc = self.processor(text=[prompt], images=[img], return_tensors="pt")
@@ -182,7 +185,9 @@ def main():
     ap.add_argument("--chat-kwargs", default='{"enable_thinking": false}')
     ap.add_argument("--prompt", choices=["full", "short"], default="short")
     ap.add_argument("--no-grad-ckpt", action="store_true")
+    ap.add_argument("--with-title", action="store_true", help="put the product title in the prompt")
     args = ap.parse_args()
+    commit = sh(["git", "rev-parse", "--short", "HEAD"])
 
     random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -203,8 +208,14 @@ def main():
 
     product_types = json.load(open("data/processed/manifest.json"))["product_types"]
     processor = AutoProcessor.from_pretrained(args.model)
-    ds = AttrDataset(uniq, args.images, processor, build_prompt(args.prompt, product_types), placeholders,
-                     json.loads(args.chat_kwargs))
+    if args.with_title:
+        from vpa.titles import load_titles
+        titles = {k: v[0] for k, v in load_titles().items()}
+        print(f"titles found for {sum(1 for r in uniq if r['listing_key'] in titles)}/{len(uniq)} train examples", flush=True)
+        instruction = lambda row: build_prompt(args.prompt, product_types, titles.get(row["listing_key"]))  # noqa: E731
+    else:
+        instruction = build_prompt(args.prompt, product_types)
+    ds = AttrDataset(uniq, args.images, processor, instruction, placeholders, json.loads(args.chat_kwargs))
 
     quant_cfg = None
     if args.quant == "4bit":
@@ -246,11 +257,12 @@ def main():
         "base_model": args.model, "quant": args.quant, "lora": {"r": args.rank, "alpha": args.alpha,
         "dropout": args.dropout, "targets": LORA_TARGETS}, "lr": args.lr, "epochs": args.epochs,
         "batch_size": args.batch_size, "grad_accum": args.grad_accum, "train_examples": len(ds),
-        "prompt": args.prompt, "gradient_checkpointing": not args.no_grad_ckpt, "images": args.images,
+        "prompt": args.prompt, "with_title": args.with_title,
+        "gradient_checkpointing": not args.no_grad_ckpt, "images": args.images,
         "steps": result.global_step, "train_loss": result.training_loss, "train_seconds": round(train_s),
         "examples_per_s": round(len(ds) * args.epochs / train_s, 2) if args.max_steps < 0 else None,
         "max_memory_allocated_gib": round(torch.cuda.max_memory_allocated() / 2**30, 2),
-        "placeholders": placeholders, "git_commit": sh(["git", "rev-parse", "--short", "HEAD"]),
+        "placeholders": placeholders, "git_commit": commit,
         "log_history": trainer.state.log_history,
     }
     (final / "train_meta.json").write_text(json.dumps(meta, indent=2))

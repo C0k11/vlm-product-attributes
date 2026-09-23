@@ -24,10 +24,15 @@ def build_instruction(product_types: list[str], title: str | None = None) -> str
 SHORT_INSTRUCTION = "Return the product_type, color and material of this product as a JSON object."
 
 
+MAX_TITLE_CHARS = 300
+
+
 def build_prompt(style: str, product_types: list[str], title: str | None = None) -> str:
     """full: label lists spelled out (needed zero-shot). short: for fine-tuned
     models that have learned the label space; valid values are still enforced by
-    the JSON schema at decode time."""
+    the JSON schema at decode time. Titles are cut to MAX_TITLE_CHARS."""
+    if title:
+        title = " ".join(title.split())[:MAX_TITLE_CHARS]
     if style == "full":
         return build_instruction(product_types, title)
     if style == "short":
