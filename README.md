@@ -126,7 +126,7 @@ BASE_MODEL=<Qwen3.5-4B dir> LORA_IMAGE=outputs/train/lora_r16_short/final LORA_T
 streamlit run demo/app.py -- --api http://localhost:8000
 ```
 
-`POST /extract` takes an image and an optional `title` and returns the three attributes as JSON. With a title it uses the image + title adapter.
+`POST /extract` takes an image and an optional `title` and returns the three attributes as JSON. With a title it uses the image + title adapter. At startup the service sends one warm-up request to each adapter; without it, the first request to an adapter took about 5 s. Measured on an idle RTX 4090 with one test image sent repeatedly, requests then took 358-373 ms each, including upload, resizing and preprocessing.
 
 ## Reproducing
 

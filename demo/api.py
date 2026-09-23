@@ -65,7 +65,18 @@ def _engine():
 
 @app.on_event("startup")
 def _warm():
-    _engine()
+    """Load the engine and run one request per adapter; the first call to each
+    adapter otherwise takes about 5 s instead of about 0.4 s."""
+    st = _engine()
+    buf = io.BytesIO()
+    Image.new("RGB", (LONG_SIDE, LONG_SIDE), (128, 128, 128)).save(buf, format="JPEG")
+    url = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+    for key, adapter in st["adapters"].items():
+        title = "warm-up" if key == "LORA_TITLE" else None
+        messages = [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": url}},
+                                                  {"type": "text", "text": build_prompt("short", st["product_types"], title)}]}]
+        st["llm"].chat([messages], st["params"], chat_template_kwargs={"enable_thinking": False},
+                       use_tqdm=False, lora_request=adapter)
 
 
 @app.get("/health")
