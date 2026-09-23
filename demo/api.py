@@ -79,6 +79,18 @@ def _warm():
                        use_tqdm=False, lora_request=adapter)
 
 
+@app.on_event("shutdown")
+def _stop():
+    """Shut the vLLM engine process down with the server; otherwise it can
+    outlive uvicorn and keep holding GPU memory."""
+    llm = _state.pop("llm", None)
+    if llm is not None:
+        try:
+            llm.llm_engine.engine_core.shutdown()
+        except Exception:
+            pass
+
+
 @app.get("/health")
 def health():
     st = _engine()
