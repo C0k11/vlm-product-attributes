@@ -152,16 +152,32 @@ class AnswerLossTrainer(Trainer):
 
 
 class ThroughputLog(TrainerCallback):
+    """Tracks steady-state speed from step WARMUP on, excluding start-up and the
+    first steps (kernel compilation, dataloader spin-up)."""
+
+    WARMUP = 20
+
     def __init__(self):
         self.t0 = None
+        self.t_warm = None
+        self.steady = None
 
     def on_train_begin(self, args, state, control, **kw):
         self.t0 = time.perf_counter()
+
+    def on_step_end(self, args, state, control, **kw):
+        if state.global_step == self.WARMUP:
+            self.t_warm = time.perf_counter()
+        elif self.t_warm and state.global_step > self.WARMUP:
+            steps = state.global_step - self.WARMUP
+            self.steady = steps * args.train_batch_size * args.gradient_accumulation_steps / (time.perf_counter() - self.t_warm)
 
     def on_log(self, args, state, control, logs=None, **kw):
         if logs is not None and self.t0 and state.global_step:
             logs["examples_per_s"] = round(state.global_step * args.train_batch_size
                                            * args.gradient_accumulation_steps / (time.perf_counter() - self.t0), 2)
+            if self.steady:
+                logs["steady_examples_per_s"] = round(self.steady, 2)
             logs["max_mem_gib"] = round(torch.cuda.max_memory_allocated() / 2**30, 2)
 
 
@@ -246,7 +262,7 @@ def main():
     )
     trainer = AnswerLossTrainer(model=model, args=targs, train_dataset=ds,
                       data_collator=lambda b: collate(b, processor.tokenizer.pad_token_id),
-                      callbacks=[ThroughputLog()])
+                      callbacks=[tput := ThroughputLog()])
     t0 = time.perf_counter()
     result = trainer.train()
     train_s = time.perf_counter() - t0
@@ -261,6 +277,7 @@ def main():
         "gradient_checkpointing": not args.no_grad_ckpt, "images": args.images,
         "steps": result.global_step, "train_loss": result.training_loss, "train_seconds": round(train_s),
         "examples_per_s": round(len(ds) * args.epochs / train_s, 2) if args.max_steps < 0 else None,
+        "steady_examples_per_s": round(tput.steady, 2) if tput.steady else None,
         "max_memory_allocated_gib": round(torch.cuda.max_memory_allocated() / 2**30, 2),
         "placeholders": placeholders, "git_commit": commit,
         "log_history": trainer.state.log_history,
