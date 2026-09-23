@@ -1,6 +1,6 @@
 ## Test results
 
-Frozen test split. Accuracy with macro-F1 in brackets, counted per row. Denominators: product_type 5,437 rows, color 1,610, material 888. VLM rows use JSON-schema constrained decoding.
+Frozen test split. Accuracy with macro-F1 in brackets, counted per row. Denominators: product_type 5,437 rows, color 1,610, material 888. VLM rows use 256 px images and JSON-schema constrained decoding.
 
 | Method | Input | product_type | color | material |
 |---|---|---|---|---|

@@ -52,11 +52,15 @@ scripts/
   download_abo_metadata.py   listing shards and image metadata
   build_dataset.py           labels, grouped split, leakage check
   download_images.py         256 px images, and 768 px originals for val/test
-  baseline_majority.py, baseline_text.py, baseline_clip.py
-  eval_vlm.py                vLLM evaluation, optional LoRA adapter
+  baseline_majority.py, baseline_text.py, baseline_clip.py, baseline_fusion.py
+  eval_vlm.py                vLLM evaluation, optional LoRA adapter, FP8
   train_lora.py              LoRA / QLoRA fine-tuning
-  score_predictions.py, error_analysis.py
+  merge_lora.py              merge an adapter into standalone bf16 weights
+  score_predictions.py, compare_predictions.py, error_analysis.py
+  make_results_tables.py     the result tables in this README
 src/vpa/                     loaders, label maps, prompts, metrics, frozen split
+demo/                        FastAPI service and Streamlit page
+docs/                        model selection notes, error analysis
 ```
 
 ## Results
@@ -64,7 +68,7 @@ src/vpa/                     loaders, label maps, prompts, metrics, frozen split
 <!-- results:start -->
 ### Test
 
-Frozen test split. Accuracy with macro-F1 in brackets, counted per row. Denominators: product_type 5,437 rows, color 1,610, material 888. VLM rows use JSON-schema constrained decoding.
+Frozen test split. Accuracy with macro-F1 in brackets, counted per row. Denominators: product_type 5,437 rows, color 1,610, material 888. VLM rows use 256 px images and JSON-schema constrained decoding.
 
 | Method | Input | product_type | color | material |
 |---|---|---|---|---|
@@ -126,7 +130,7 @@ BASE_MODEL=<Qwen3.5-4B dir> LORA_IMAGE=outputs/train/lora_r16_short/final LORA_T
 streamlit run demo/app.py -- --api http://localhost:8000
 ```
 
-`POST /extract` takes an image and an optional `title` and returns the three attributes as JSON. With a title it uses the image + title adapter. At startup the service sends one warm-up request to each adapter; without it, the first request to an adapter took about 5 s. Measured on an idle RTX 4090 with one test image sent repeatedly, requests then took 358-373 ms each, including upload, resizing and preprocessing.
+`POST /extract` takes an image and an optional `title` and returns the three attributes as JSON. With a title it uses the image + title adapter. At startup the service sends one warm-up request to each adapter; without it, the first request to an adapter took about 5 s. Measured on an idle RTX 4090 with one test image sent repeatedly, requests then took 358-382 ms each (three server starts), including upload, resizing and preprocessing.
 
 ## Reproducing
 
